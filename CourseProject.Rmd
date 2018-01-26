@@ -1,0 +1,79 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Cabot Nunlist"
+date: "January 24, 2018"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+library(caret)
+library(randomForest)
+set.seed(50000)
+```
+
+## Overview
+This document does prep and fits a model to a data set of motion sensors in an effort to be able to predict whether a user is performing an exercise correctly.
+
+
+## Exploratory Analysis
+
+```{r Load Data}
+setwd("C:/DataScience/RStudioWorkingFolder/PracticalMachineLearning/CourseProject")
+alltrain <- read.csv("pml-training.csv", stringsAsFactors = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+alltest <- read.csv("pml-testing.csv", stringsAsFactors = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+```
+
+First, let's make sure the number of samples for all 5 factors we are trying to predict is reasonably 
+even.  If it's not, we may need to introduce some synthetic data.
+
+```{r Examine Distribution of Value to Predict}
+table(alltrain$classe)
+```
+
+This looks reasonable.  Now let's make sure there is a reasonable distribution among subjects
+
+```{r Examine Distribution of users relative to output class}
+table(alltrain$user_name, alltrain$classe)
+```
+
+This looks fine too.  
+
+## Build Model
+
+Now we want to see if we can fit a model without using any of the columns that have missing data.  We will remove those columns and see what we have to work with.  It seems reasonable to include all of the columns describing movement in the initial model.  For the size of the data set we have it should not be too time-consuming and we certainly have enough data not to overfit using that many predictors.
+
+```{r Clean Data}
+cleanTrain <- alltrain[, colSums(is.na(alltrain)) == 0]
+cleanTest <- alltest[, colSums(is.na(alltest)) == 0]
+colnames(cleanTrain)
+```
+
+We still have a few features that are unrelated to the actual movements being measured, so we will remove those next
+
+```{r Clean Data Part 2}
+cleanTrain <- cleanTrain[, -c(1:7)]
+cleanTest <- cleanTest[, -c(1:7)]
+
+inTrain <- createDataPartition(cleanTrain$classe, p = 0.75, list = FALSE)
+trainSet <- cleanTrain[inTrain,]
+testSet <- cleanTrain[-inTrain,]
+```
+
+Now let's try a random forest model with cross validation.  I am choosing random forest for 2 reasons:  
+1) It generally performs very well
+2) It's main downside - interpretability - is not an issue here.  We only care about the prediction, now how it was derived.
+
+```{r Run Random Forest model }
+modFit <- train(classe ~ ., data = trainSet, method = "rf", trControl=trainControl(method="cv", number = 5), prox=TRUE, allowParallel = TRUE)
+```
+
+
+## Evaluate Model
+
+```{r Run generated model on test set }
+confusionMatrix(predict(modFit, testSet), testSet$classe)
+```
+
+This model has a .993 accuracy on our test set.  Therefore, I would predict the out of sample error
+rate to be between .0046 and .0094 - the 95% confidence interval range on the observed test set error of .0067.  
+
